@@ -72,6 +72,10 @@ async def on_message(bot, msg, msg_obj):
     if msg[0] == 'rami':
         await bot.send_message(msg_obj.channel, 'Daily Reminder. **RAMI IS SHIT**', tts=True)
         return True
+
+    if msg[0] == 'rng':
+        await bot.send_message(msg_obj.channel, '%s' % (choice(msg[1:])))
+        return True
     if msg[0] == 'color':
         level = bot.permissions.get(msg_obj.author.id)
 

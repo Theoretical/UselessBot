@@ -35,7 +35,7 @@ async def add_show(bot, msg, msg_obj):
     url = 'http://127.0.0.1:8081/api/%s/' % environ.get('SB_API')
 
     if not str.isdigit(msg[2]):
-        return False
+        return await get_first(bot, msg, msg_obj)
 
     res = await get(url + '?cmd=show.addnew&tvdbid=%s&status=wanted&initial=fullhdtv|hdwebdl|fullhdwebdl|hdbluray|fullhdbluray' % msg[2])
     data = await res.json()
@@ -74,12 +74,32 @@ async def search(bot, msg, msg_obj):
     for s in series:
         name = s.xpath('./seriesname/text()')[0]
         id = s.xpath('./seriesid/text()')[0]
-        year = s.xpath('./firstaired/text()')[0]
+        year = s.xpath('./firstaired/text()')[0] if len(s.xpath('./firstaired/text()')) else 'N/A'
         network = s.xpath('./network/text()')[0] if len(s.xpath('./network/text()')) else 'N/A'
 
         out_msg += '<%s> <%s> <%s> ID: %s\n' % (name, year, network, id)
 
     await bot.send_message(msg_obj.channel, '`%s`' % out_msg)
+    return True
+
+async def get_first(bot, msg, msg_obj):
+    url = 'http://thetvdb.com/api/GetSeries.php?seriesname=%s' % quote(' '.join(msg[2:]))
+
+    res = await get(url)
+    text = await res.text()
+    node = fromstring('\n'.join(text.split('\n')[1:]))
+
+    series = node.xpath('//seriesid')[0].text
+
+    url = 'http://127.0.0.1:8081/api/%s/' % environ.get('SB_API')
+
+    if not str.isdigit(series):
+        return False
+
+    res = await get(url + '?cmd=show.addnew&tvdbid=%s&status=wanted&initial=fullhdtv|hdwebdl|fullhdwebdl|hdbluray|fullhdbluray' % series)
+    data = await res.json()
+    await bot.send_message(msg_obj.channel, '`%s: %s`' % (data['result'], data['message']))
+
     return True
 
 async def on_message(bot, msg, msg_obj):
@@ -98,7 +118,7 @@ async def on_message(bot, msg, msg_obj):
         if user == 'list':
             return await list_shows(bot, msg, msg_obj)
         await invite_member(user)
-        await bot.send_message(msg_obj.channel, '`Invited: {} to plex server!`'.format(user))
+        await bot.send_message(msg_obj.channel, '`Invited email to plex server!`')
 
         return True
 
