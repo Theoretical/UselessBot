@@ -13,7 +13,7 @@ def on_unload(bot):
 async def on_message(bot, msg, msg_obj):
     global gays
     
-    if msg[0] == 'spice':
+    if msg[0] == 'spicU73H4ITGHUI43GHJK:We':
         level = bot.permissions.get(msg_obj.author.id)
 
         if level is None or level not in ['mod', 'admin']:
@@ -76,6 +76,19 @@ async def on_message(bot, msg, msg_obj):
     if msg[0] == 'rng':
         await bot.send_message(msg_obj.channel, '%s' % (choice(msg[1:])))
         return True
+
+    if msg[0] == 'me':
+        level = bot.permissions.get(msg_obj.author.id)
+
+        if level is None or level not in ['mod', 'admin']:
+            return
+
+        role_name = ' '.join(msg[1:])
+        for role in msg_obj.server.roles:
+            if role.name.lower() == role_name.lower():
+                await bot.add_roles(msg_obj.author, role)
+
+
     if msg[0] == 'color':
         level = bot.permissions.get(msg_obj.author.id)
 

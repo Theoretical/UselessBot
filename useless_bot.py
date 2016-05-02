@@ -114,4 +114,4 @@ async def on_ready():
 
 print("Running")
 
-client.run_token(environ.get("DISCORD_TOKEN"))
+client.run(environ.get("DISCORD_TOKEN"))

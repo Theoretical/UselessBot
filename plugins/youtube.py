@@ -61,10 +61,19 @@ def extract_info(bot, *args, **kwargs):
     ytdl = youtube_dl.YoutubeDL(ytdl_format_options)
     return bot.loop.run_in_executor(thread_pool, functools.partial(ytdl.extract_info, *args, **kwargs))
 
+
+def process_info(bot, item):
+    thread_pool = ThreadPoolExecutor(max_workers=2)
+    ytdl = youtube_dl.YoutubeDL(ytdl_format_options)
+    return bot.loop.run_in_executor(thread_pool, functools.partial(ytdl.process_ie_result, item, download=True))
+
 def play(bot):
     bot.loop.create_task(play_song(bot))
 
 def progress(bot):
+    if bot.music['player'] is None:
+        return 0
+
     return round(bot.music['player'].loops * 0.02)
 
 def on_finished(bot):
@@ -111,12 +120,13 @@ async def parse_playlist(url):
     headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.95 Safari/537.36'}
     page = await post(url, headers=headers)
     page = await page.text()
+    print(page.text)
     soup = BeautifulSoup(page, 'html.parser')
     tags = soup.find_all("tr", class_="pl-video yt-uix-tile ")
     links = []
     for tag in tags:
         links.append("http://www.youtube.com/watch?v=" + tag['data-video-id'])
-    return links if len(links) > 0 else False
+    return links if len(links) > 0 else []
 
 
 async def do_callback(bot, msg, msg_obj):
@@ -161,24 +171,10 @@ async def on_playlist(bot, msg, msg_obj):
         await bot.send_message(msg_obj.channel, 'Available playlists: `{}`'.format('|'.join(playlists)))
         return
 
-    if msg[1] == 'update':
-        playlists = [x.split('.')[0] for x in listdir('playlists/')]
-        for f in playlists:
-            content = open('playlists/%s.txt' % f, 'rt').read().split('\n')
-            urls = await parse_playlist(content[0])
-            new_file = open('playlists/%s.txt' % f, 'wt')
-            new_file.write('%s\n' % content[0])
-            for url in urls:
-                new_file.write('%s\n' % url)
-            new_file.close()
-        return
-
     if len(msg) > 2:
         urls = await parse_playlist(msg[2])
         f = open(playlist_name, 'wt')
         f.write('%s\n' % msg[2])
-        for url in urls:
-            f.write('%s\n' % url)
         f.close()
 
     if not isfile(playlist_name):
@@ -191,16 +187,17 @@ async def on_playlist(bot, msg, msg_obj):
                 channel = ch
     else:
         channel = msg_obj.channel
-    items = open(playlist_name, 'rt').read().split('\n')
-
-    for num, item in enumerate(items[1:]):
-        print('%s/%s' % (num, len(items[1:])))
-
+    
+    playlist_url = open(playlist_name, 'rt').read().split('\n')[0]
+    print(playlist_url)
+    items = await extract_info(bot, url=playlist_url, process=False, download=False)
+    
+    for num, item in enumerate(items['entries']):
         if num > 0 and not music['song']:
             play(bot)
 
         try:
-            x = await extract_info(bot, url=item, download=True)
+            x = await process_info(bot, item)
             if x is None:
                 continue
         except:
