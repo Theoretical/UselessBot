@@ -66,14 +66,6 @@ async def on_message(bot, msg, msg_obj):
         await bot.send_message(msg_obj.channel, '%s`' % s)
         return True
 
-    if msg[0] == 'rami':
-
-        for user in msg_obj.server.members:
-            if user.name.lower() == 'rami':
-                options = ['IS SHIT','IS A SANDNIGGER', 'SHOULD KILL HIMSELF', 'CAN ONLY COACH', 'IS A BITCH', 'FUCK HIM']
-                await bot.send_message(msg_obj.channel, 'Daily Reminder. **{0.mention} {1}**'.format(user, choice(options)), tts=True)
-        return True
-
     if msg[0] == 'rng':
         await bot.send_message(msg_obj.channel, '%s' % (choice(msg[1:])))
         return True
