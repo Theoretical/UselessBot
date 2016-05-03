@@ -5,9 +5,6 @@ from urllib.parse import quote
 def on_load(bot):
     pass
 
-def on_unload(bot):
-    pass
-
 
 async def get_animelist(title):
     headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.95 Safari/537.36'}

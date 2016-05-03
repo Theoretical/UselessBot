@@ -51,9 +51,11 @@ def on_load(bot):
     #bot.loop.create_task(playback_loop(bot))
     print('Loaded yt!')
 
-def on_unload(bot):
+async def on_unload(bot):
     if bot.music['player']:
         bot.music['player'].stop()
+    if bot.is_voice_connected():
+        await bot.voice.disconnect()
     bot.music = dict(playlist=list(), player=None, paused=False, stopped=False, song=None)
 
 def extract_info(bot, *args, **kwargs):
