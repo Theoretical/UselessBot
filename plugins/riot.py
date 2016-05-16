@@ -37,7 +37,18 @@ async def on_message(bot, msg, msg_obj):
         await bot.send_message(msg_obj.channel, '%s %s his last game in %s lane, role: %s.\nChampion: %s | Kills: %s | Deaths: %s | Assists: %s | CS: %s | KDA: %s\nBans: %s' % (msg[1],  "won" if player.stats.win else "lost", player.timeline.lane, player.timeline.role, player.champion.name, player.stats.kills, player.stats.deaths, player.stats.assists, player.stats.cs, player.stats.kda, 
             ('/'.join([ban.champion.name for ban in first.red_team.bans + first.blue_team.bans]))))
         return True
-    
+
+
+    if msg[0] == 'master':
+        master = [entry.summoner for entry in riotapi.get_master()]
+
+        for summoner in master:
+            if master.name.lower() == ' '.join(msg[1:]).lower():
+                await bot.send_message(msg_obj.channel, '**YOU THINK THAT NIGGA IS A JOKE?**')
+
+        await bot.send_message(msg_obj.channel, 'No, that nigga is basically johnny...')
+        return True
+
     if msg[0] == 'mmr':
         summoner = ''.join(msg[1:])
 

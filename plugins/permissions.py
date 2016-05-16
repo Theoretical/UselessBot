@@ -5,7 +5,7 @@ def on_load(bot):
         bot.permissions[args[0]] = args[1]
 
 async def on_message(bot, msg, msg_obj):
-    if msg[0] == 'permission':
+    if msg[0] in ['role', 'permission']:
         level = bot.permissions.get(msg_obj.author.id)
 
         if level is None or level not in ['user', 'mod', 'admin']:

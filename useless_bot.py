@@ -31,6 +31,10 @@ class Bot(Client):
         cmd_prefix = msg[0][0]
         msg[0] = msg[0][1:]
 
+        level = self.permissions.get(message.author.id)
+        if level == 'faggot':
+            await self.delete_message(message)
+
         if cmd_prefix == self.prefix:
             remove = False
             for plugin in self.plugins:

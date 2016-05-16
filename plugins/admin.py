@@ -9,7 +9,48 @@ def on_load(bot):
 
 async def on_message(bot, msg, msg_obj):
     global gays
-    
+
+
+    if msg[0] == 'mute':
+        level = bot.permissions.get(msg_obj.author.id)
+
+        if level is None or level not in ['mod', 'admin']:
+            return
+
+        voice_channel = None
+
+        for channel in msg_obj.server.channels:
+            if str(channel.type) == 'voice':
+                for user in channel.voice_members:
+                    if user.id == msg_obj.author.id:
+                        voice_channel = channel
+                        break
+
+        for user in voice_channel.voice_members:
+            await bot.server_voice_state(user, mute=True)
+            sleep(.75)
+
+        return True
+    if msg[0] == 'unmute':
+        level = bot.permissions.get(msg_obj.author.id)
+
+        if level is None or level not in ['mod', 'admin']:
+            return
+
+        voice_channel = None
+
+        for channel in msg_obj.server.channels:
+            if str(channel.type) == 'voice':
+                for user in channel.voice_members:
+                    if user.id == msg_obj.author.id:
+                        voice_channel = channel
+                        break
+
+        for user in voice_channel.voice_members:
+            await bot.server_voice_state(user, mute=False)
+            sleep(.75)
+
+        return True
     if msg[0] == 'spicU73H4ITGHUI43GHJK:We':
         level = bot.permissions.get(msg_obj.author.id)
 
@@ -34,8 +75,7 @@ async def on_message(bot, msg, msg_obj):
         if level is None or level not in ['mod', 'admin']:
             return
 
-        async for message in bot.logs_from(msg_obj.channel, limit=int(msg[1])+1):
-            await bot.delete_message(message)
+        await bot.purge_from(msg_obj.channel, limit=int(msg[1]))
         return True
    
     if msg[0] == 'rcolor':
@@ -68,6 +108,29 @@ async def on_message(bot, msg, msg_obj):
 
     if msg[0] == 'rng':
         await bot.send_message(msg_obj.channel, '%s' % (choice(msg[1:])))
+        return True
+
+    if msg[0] == 'troll':
+        level = bot.permissions.get(msg_obj.author.id)
+
+        if level is None or level not in ['mod', 'admin']:
+            return
+
+        user = ' '.join(msg[1:])
+        user_obj = None
+
+        for u in msg_obj.server.members:
+            if u.name.lower() == user.lower():
+                user_obj = u
+
+        if not user_obj: return True
+
+        channels = [x for x in msg_obj.server.channels if str(x.type) == 'voice']
+
+        for i in range(0, 10):
+            await bot.send_message(msg_obj.channel, '{0.mention}'.format(user_obj))
+            await bot.move_member(user_obj, choice(channels))
+            sleep(.15)
         return True
 
     if msg[0] == 'me':
