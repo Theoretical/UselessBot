@@ -202,7 +202,10 @@ class YoutubePlayer:
         if not self.song:
             self.play()
 
-        return await self.on_queue(msg, msg_obj)
+        if msg[-1] == 'shuffle':
+            return await self.on_shuffle(msg, msg_obj)
+        else:
+            return await self.on_queue(msg, msg_obj)
 
 
     async def on_play(self, msg, msg_obj):
