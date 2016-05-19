@@ -174,7 +174,7 @@ class YoutubePlayer:
             await self.bot.send_message(msg_obj.channel, 'Available playlists: `{}`'.format('|'.join(playlists)))
             return True
 
-        if len(msg) > 2:
+        if len(msg) > 2 and 'youtube.com' in msg[2]:
             f = open(playlist_name, 'wt')
             f.write('%s\n' % msg[2])
             f.close()
