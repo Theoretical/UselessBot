@@ -269,6 +269,7 @@ class YoutubePlayer:
         if (self.player and level in ['mod', 'admin']) or skip.allowed:
             self.player.stop()
             self.player = None
+            return True
 
         await self.bot.send_message(msg_obj.channel, '`{} Started a skip request! Need 1 more person to request a skip to continue!`'.format(msg_obj.author))
 
