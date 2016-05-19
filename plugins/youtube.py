@@ -44,7 +44,7 @@ def on_load(bot):
 async def on_unload(bot):
     for yt in bot.yt.values():
         await yt.quit()
-
+    bot.yt = dict()
 
 class YoutubePlayer:
     def __init__(self, bot, channel):
@@ -150,7 +150,7 @@ class YoutubePlayer:
         position = str(timedelta(seconds=self.progress))
         length = str(timedelta(seconds=self.song['duration']))
         total_len = sum([x['duration'] for x in self.playlist])
-        await self.bot.send_message(msg_obj.channel, '```Queue length: {} | Queue Size: {} Current Song Progress: {}/{}\n{}```'.format(str(timedelta(seconds=total_len)), len(self.playlist), position, length, queue_str))
+        await self.bot.send_message(msg_obj.channel, '```Queue length: {} | Queue Size: {} || Current Song Progress: {}/{}\n{}```'.format(str(timedelta(seconds=total_len)), len(self.playlist), position, length, queue_str))
 
 
     async def on_playlist(self, msg, msg_obj):
