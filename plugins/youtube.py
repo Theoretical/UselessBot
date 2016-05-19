@@ -261,7 +261,7 @@ class YoutubePlayer:
     async def on_skip(self, msg, msg_obj):
         self.skip.add(msg_obj.author)
 
-        level = bot.permissions.get(msg_obj.author.id)
+        level = self.bot.permissions.get(msg_obj.author.id)
 
         if (self.player and level in ['mod', 'admin']) or skip.allowed:
             self.player.stop()
