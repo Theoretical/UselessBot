@@ -59,7 +59,7 @@ class YoutubePlayer:
         self.paused = False
         self.voice = None
         self.channel = channel
-        self.volume = .4
+        self.volume = .05
 
     def extract_info(self, *args, **kwargs):
         thread_pool = ThreadPoolExecutor(max_workers=2)
