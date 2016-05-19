@@ -101,6 +101,7 @@ class YoutubePlayer:
                 return
 
             self.player = self.voice.create_ffmpeg_player('/tmp/' + self.song['id'])
+            self.player.loops = 0 #???
             self.player.after = lambda: self.bot.loop.call_soon_threadsafe(self.on_finished)
             self.player.volume = self.volume
             await self.send_np(self.channel)
@@ -247,7 +248,7 @@ class YoutubePlayer:
             return
 
         if len(msg) == 1:
-            await self.bot.send_message(msg_obj.channel, '`Current Volume: %s`' % self.volume)
+            await self.bot.send_message(msg_obj.channel.name, '`Current Volume: %s`' % self.volume)
         else:
             if not str.isdigit(msg[1]): return
             self.volume = int(msg[1]) / 100
