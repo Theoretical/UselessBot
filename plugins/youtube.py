@@ -230,6 +230,8 @@ class YoutubePlayer:
 
         if len(self.playlist) > 1:
             await self.on_queue(msg, msg_obj)
+        else:
+            await self.send_np(msg_obj.channel)
 
 
     async def on_pause(self, msg, msg_obj):
