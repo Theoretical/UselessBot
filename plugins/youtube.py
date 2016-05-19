@@ -103,10 +103,10 @@ class YoutubePlayer:
             self.player = self.voice.create_ffmpeg_player('/tmp/' + self.song['id'])
             self.player.loops = 0 #???
             self.player.after = lambda: self.bot.loop.call_soon_threadsafe(self.on_finished)
-            self.player.volume = self.volume
             await self.send_np(self.channel)
 
             self.player.start()
+            self.player.volume = self.volume
 
     async def quit(self):
         if self.player:
@@ -150,7 +150,7 @@ class YoutubePlayer:
         position = str(timedelta(seconds=self.progress))
         length = str(timedelta(seconds=self.song['duration']))
         total_len = sum([x['duration'] for x in self.playlist])
-        await self.bot.send_message(msg_obj.channel, '```Queue length: {} | Queue Size: {} || Current Song Progress: {}/{}\n{}```'.format(str(timedelta(seconds=total_len)), len(self.playlist), position, length, queue_str))
+        await self.bot.send_message(msg_obj.channel, '```Queue length: {} | Queue Size: {} | Current Song Progress: {}/{}\n{}```'.format(str(timedelta(seconds=total_len)), len(self.playlist), position, length, queue_str))
 
 
     async def on_playlist(self, msg, msg_obj):
