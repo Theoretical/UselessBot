@@ -272,4 +272,4 @@ async def on_message(bot, msg, msg_obj):
     if msg_obj.server not in bot.yt:
         bot.yt[msg_obj.server] = YoutubePlayer(bot, msg_obj.channel)
 
-    return await bot.yt[msg_obj].process_commands(msg, msg_obj)
+    return await bot.yt[msg_obj.server].process_commands(msg, msg_obj)
