@@ -178,7 +178,7 @@ class YoutubePlayer:
             f.close()
 
         if not isfile(playlist_name):
-            await bot.send_message(msg_obj.channel, 'Invalid playlist!')
+            await self.bot.send_message(msg_obj.channel, 'Invalid playlist!')
             return True
 
         playlist_url = open(playlist_name, 'rt').read().split('\n')[0]
@@ -247,7 +247,7 @@ class YoutubePlayer:
             return
 
         if len(msg) == 1:
-            await bot.send_message(msg_obj, '`Current Volume: %s`' % self.volume)
+            await self.bot.send_message(msg_obj, '`Current Volume: %s`' % self.volume)
         else:
             if not str.isdigit(msg[1]): return
             self.volume = int(msg[1]) / 100
