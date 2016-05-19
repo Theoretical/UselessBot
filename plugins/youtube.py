@@ -255,7 +255,7 @@ class YoutubePlayer:
             self.volume = int(msg[1]) / 100
 
             if self.player:
-                self.player = self.volume
+                self.player.volume = self.volume
             await self.bot.send_message(msg_obj.channel, '`{} set the volume to {}`'.format(msg_obj.author, self.volume))
 
     async def on_skip(self, msg, msg_obj):
