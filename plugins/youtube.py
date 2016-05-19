@@ -1,20 +1,13 @@
-from aiohttp import get, post
 from asyncio import Lock
-from bs4 import BeautifulSoup
 from datetime import timedelta
 from os import listdir, unlink
 from os.path import isfile
-from sys import modules
+from random import shuffle
 from concurrent.futures import ThreadPoolExecutor
 import functools
 import youtube_dl
 
-
-playlist = list()
-volume = .05
-channel = None
-
-class Skip():
+class Skip:
     def __init__(self):
         self.users = set()
 
@@ -28,6 +21,7 @@ class Skip():
     def reset(self):
         self.users.clear()
 
+
 ytdl_format_options = {
     'format': 'bestaudio/best',
     'extractaudio': True,
@@ -40,323 +34,242 @@ ytdl_format_options = {
     'no_warnings': True,
     'prefer_insecure': True,
     'source_address': '0.0.0.0'
-
 }
 
-music_lock = Lock()
-skip = Skip()
 
 def on_load(bot):
-    bot.music = dict(playlist=list(), player=None, paused=False, stopped=False, song=None)
-    #bot.loop.create_task(playback_loop(bot))
+    bot.yt = dict()
     print('Loaded yt!')
 
 async def on_unload(bot):
-    if bot.music['player']:
-        bot.music['player'].stop()
-    if bot.is_voice_connected():
-        await bot.voice.disconnect()
-    bot.music = dict(playlist=list(), player=None, paused=False, stopped=False, song=None)
-
-def extract_info(bot, *args, **kwargs):
-    thread_pool = ThreadPoolExecutor(max_workers=2)
-    ytdl = youtube_dl.YoutubeDL(ytdl_format_options)
-    return bot.loop.run_in_executor(thread_pool, functools.partial(ytdl.extract_info, *args, **kwargs))
+    for yt in bot.yt.values():
+        await yt.quit()
 
 
-def process_info(bot, item):
-    thread_pool = ThreadPoolExecutor(max_workers=2)
-    ytdl = youtube_dl.YoutubeDL(ytdl_format_options)
-    return bot.loop.run_in_executor(thread_pool, functools.partial(ytdl.process_ie_result, item, download=True))
+class YoutubePlayer:
+    def __init__(self, bot, channel):
+        self.playlist = list()
+        self.music_lock = Lock()
+        self.skip = Skip()
+        self.bot = bot
+        self.ytdl = youtube_dl.YoutubeDL(ytdl_format_options)
+        self.player = None
+        self.song = None
+        self.stopped = False
+        self.paused = False
+        self.voice = None
+        self.channel = channel
+        self.volume = .4
 
-def play(bot):
-    bot.loop.create_task(play_song(bot))
+    def extract_info(self, *args, **kwargs):
+        thread_pool = ThreadPoolExecutor(max_workers=2)
+        return self.bot.loop.run_in_executor(thread_pool, functools.partial(self.ytdl.extract_info, *args, **kwargs))
 
-def progress(bot):
-    if bot.music['player'] is None:
-        return 0
+    def process_info(self, item):
+        thread_pool =ThreadPoolExecutor(max_workers=2)
+        return self.bot.loop.run_in_executor(thread_pool, functools.partial(self.ytdl.process_ie_result, item, download=True))
 
-    return round(bot.music['player'].loops * 0.02)
+    @property
+    def progress(self):
+        return round(self.player.loops * 0.02) if self.player else 0
 
-def on_finished(bot):
-    global skip
-    music = bot.music
-    try:
-        unlink('/tmp/' + music['song']['id'])
-    except:
-        pass
-    music['song'] = None
-    skip = Skip()
+    def play(self):
+        self.bot.loop.create_task(self.play_song())
 
-    if not music['stopped']:
-        play(bot)
-
-async def play_song(bot):
-    global music_lock, volume, channel
-    music = bot.music
-
-    if music['paused']:
-        if music['player']:
-            music['paused'] = False
-            music['player'].resume()
-        return
-
-    with await music_lock:
+    def on_finished(self):
         try:
-            song = music['playlist'].pop(0)
+            unlink('/tmp/' + self.song['id'])
         except:
-            return
+            pass
 
-        song_obj = bot.voice.create_ffmpeg_player('/tmp/' + song['id'])
-        song_obj.after = lambda: bot.loop.call_soon_threadsafe(on_finished, bot)
-        song_obj.volume = volume
-        if 'duration' not in song:
-            song['duration'] = 0
-        music['song'] = song
-        music['player'] = song_obj
-        p = str(timedelta(seconds=progress(bot)))
-        await bot.send_message(channel, '**Now Playing: {} | Elapsed: {}** |`{} |` *{}*'.format(song['title'], p, str(timedelta(seconds=song['duration'])), song['webpage_url']))
-        song_obj.start()
+        self.song = None
+        self.skip = Skip()
 
-async def parse_playlist(url):
-    headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.95 Safari/537.36'}
-    page = await post(url, headers=headers)
-    page = await page.text()
-    print(page.text)
-    soup = BeautifulSoup(page, 'html.parser')
-    tags = soup.find_all("tr", class_="pl-video yt-uix-tile ")
-    links = []
-    for tag in tags:
-        links.append("http://www.youtube.com/watch?v=" + tag['data-video-id'])
-    return links if len(links) > 0 else []
+        if not self.stopped:
+            self.play()
 
+    async def play_song(self):
+        if self.paused:
+            if self.player:
+                self.paused = False
+                self.player.resume()
 
-async def do_callback(bot, msg, msg_obj):
-    module = modules[__name__]
-    cb = 'on_' + msg[0]
+        with await self.music_lock:
+            try:
+                self.song = self.playlist.pop(0)
+            except:
+                return
 
-    if not hasattr(module, cb) and msg[0] != 'message':
-        print('no callback. %s | %s' % (module, cb))
+            self.player = self.voice.create_ffmpeg_player('/tmp/' + self.song['id'])
+            self.player.after = lambda: self.bot.loop.call_soon_threadsafe(self.on_finished)
+            self.player.volume = self.volume
+            await self.send_np(self.channel)
+
+            self.player.start()
+
+    async def quit(self):
+        if self.player:
+            self.player.stop()
+        if self.voice:
+            await self.voice.disconnect()
+
+    async def process_commands(self, msg, msg_obj):
+        callback_func = 'on_' + msg[0]
+
+        if hasattr(self, callback_func):
+            return await getattr(module, cb)(msg, msg_obj)
         return False
 
-    await getattr(module, cb)(bot, msg, msg_obj)
-    return True
+    async def send_np(self, channel):
+        if self.song:
+            song = self.song
+            position = str(timedelta(seconds=self.progress))
+            length = str(timedelta(seconds=song['duration']))
+            await self.bot.send_message(channel, '```Now Playing: {0} requested by {1} | Timestamp: {2} | Length: {3}\n{4}```'.format(song['title'], song['requestor'], position, length, song['webpage_url']))
 
+    async def on_np(self, msg, msg_obj):
+        await self.send_np(msg_obj.channel)
+        return True
 
-async def on_np(bot, msg, msg_obj):
-    if bot.music['song']:
-        song = bot.music['song']
-        p = str(timedelta(seconds=progress(bot)))
-        await bot.send_message(msg_obj.channel, '**Now Playing: {} | Elapsed: {} | {}** *{}*'.format(song['title'], p, str(timedelta(seconds=song['duration'])), song['webpage_url']))
+    async def on_shuffle(self, msg, msg_obj):
+        for i in range(0, 5):
+            shuffle(self.playlist)
 
+        await self.on_queue(msg, msg_obj)
 
-async def on_shuffle(bot, msg, msg_obj):
-    from random import shuffle
-    for i in range(0, 5):
-        shuffle(bot.music['playlist'])
+    async def on_queue(self, msg, msg_obj):
+        if self.song is None:
+            return True
 
-    await on_queue(bot, msg, msg_obj)
-
-async def on_playlist(bot, msg, msg_obj):
-    global channel
-    music = bot.music
-    playlist_name = 'playlists/%s.txt' % msg[1]
-   
-
-    if not bot.is_voice_connected():
-        for member in bot.get_all_members():
-            if member == msg_obj.author and member.voice_channel is not None:
-                await bot.join_voice_channel(member.voice_channel)
-
-    if msg[1] == 'list':
-        playlists = [x.split('.')[0] for x in listdir('playlists/')]
-        await bot.send_message(msg_obj.channel, 'Available playlists: `{}`'.format('|'.join(playlists)))
-        return
-
-    if len(msg) > 2:
-        urls = await parse_playlist(msg[2])
-        f = open(playlist_name, 'wt')
-        f.write('%s\n' % msg[2])
-        f.close()
-
-    if not isfile(playlist_name):
-        await bot.send_messagE(msg_obj.channel, 'Invalid playlist name specified')
-        return
-
-    if msg_obj.channel.name != 'bot':
-        for ch in bot.get_all_channels():
-            if ch.name == 'bot':
-                channel = ch
-    else:
-        channel = msg_obj.channel
-    
-    playlist_url = open(playlist_name, 'rt').read().split('\n')[0]
-    print(playlist_url)
-    items = await extract_info(bot, url=playlist_url, process=False, download=False)
-    
-    for num, item in enumerate(items['entries']):
-        if num > 0 and not music['song']:
-            play(bot)
-
-        try:
-            x = await process_info(bot, item)
-            if x is None:
-                continue
-        except:
-            continue
-
-        music['playlist'].append(x)
-
-    if not music['song']:
-        play(bot)
-    await on_queue(bot, msg, msg_obj)
-
-async def on_play(bot, msg, msg_obj):
-    global channel
-    music = bot.music
-
-    if not bot.is_voice_connected():
-        for member in bot.get_all_members():
-            if member == msg_obj.author and member.voice_channel is not None:
-                await bot.join_voice_channel(member.voice_channel)
-
-
-    if msg_obj.channel.name != 'bot':
-        for ch in bot.get_all_channels():
-            if ch.name == 'bot' and ch.server == msg_obj.server:
-                channel = ch
-
-    else:
-        channel = msg_obj.channel
-    if len(bot.music['playlist']) > 0:
         queue_str = ''
-        for song in music['playlist']:
-            queue_str += '%s: (%s).\n' % (song['title'], str(timedelta(seconds=song['duration'])))
+        for song in self.playlist[:15]:
+            queue_str += '%s: (%ss). requested by: %s\n' % (song['title'], str(timedelta(seconds=song['duration'])), song['requestor'])
 
-        p = str(timedelta(seconds=progress(bot)))
-        total_len = sum([x['duration'] for x in music['playlist']])
+        position = str(timedelta(seconds=self.progress))
+        length = str(timedelta(seconds=self.song['duration']))
+        total_len = sum([x['duration'] for x in self.playlist])
+        await self.bot.send_message(msg_obj.channel, '```Queue length: {} | Queue Size: {} Current Song Progress: {}/{}\n{}'.format(str(timedelta(seconds=total_len)), len(self.playlist), position, length, queue_str))
 
-        if music['song']:
-            await bot.send_message(msg_obj.channel, '**Current queue length: {} | Current Song Elapsed: {}/{}** | `Songs: {}\nQueue: {}`'.format(str(timedelta(seconds=total_len)), p, str(timedelta(seconds=music['song']['duration'])), len(music['playlist']), queue_str))
+
+    async def on_playlist(self, msg, msg_obj):
+        playlist_name = 'playlists/%s.txt' % msg[1]
+
+        if self.voice is None:
+            for member in self.bot.get_all_members():
+                if member == msg_obj.author and member.voice_channel is not None:
+                    self.voice = await self.bot.join_voice_channel(member.voice_channel)
+
+        # Find a bot channel if we have one...
+        if msg_obj.channel.name != 'bot':
+            for ch in msg_obj.server.channels:
+                if ch.name == 'bot':
+                    self.channel = ch
+                    break
+        else:
+            self.channel = msg_obj.channel
+        if msg[1] == 'list':
+            playlists = [x.split('.')[0] for x in listdir('playlists/')]
+            await self.bot.send_message(msg_obj.channel, 'Available playlists: `{}`'.format('|'.join(playlists)))
+            return True
+
+        if len(msg) > 2:
+            f = open(playlist_name, 'wt')
+            f.write('%s\n' % msg[2])
+            f.close()
+
+        if not isfile(playlist_name):
+            await bot.send_message(msg_obj.channel, 'Invalid playlist!')
+            return True
+
+        playlist_url = open(playlist_name, 'rt').read().split('\n')[0]
+        items = await self.extract_info(url=playlist_url, process=False, download=False)
+
+        for num, item in enumerate(items['entries']):
+            if num > 0 and not self.song:
+                self.play()
+
+            try:
+                x = await self.process_info(item)
+                if x is None:
+                    continue
+
+                x['requestor'] = msg_obj.author.name
+                self.playlist.append(x)
+            except:
+                continue
+        if not self.song:
+            self.play()
+
+        return await self.on_queue(msg, msg_obj)
 
 
-    if 'playlist' not in msg[1]:
-        music['playlist'].append(await extract_info(bot, url=msg[1], download=True))
+    async def on_play(self, msg, msg_obj):
+        if self.voice is None:
+            for member in self.bot.get_all_members():
+                if member == msg_obj.author and member.voice_channel is not None:
+                    self.voice = await self.bot.join_voice_channel(member.voice_channel)
 
-        if not music['song']:
-            play(bot)
-        return
+        # Find a bot channel if we have one...
+        if msg_obj.channel.name != 'bot':
+            for ch in msg_obj.server.channels:
+                if ch.name == 'bot':
+                    self.channel = ch
+                    break
+        else:
+            self.channel = msg_obj.channel
 
-    items = await parse_playlist(msg[1])
+        if 'playlist' not in msg[1]:
+            song = await self.extract_info(url=msg[1], download=True)
+            song['requestor'] = msg_obj.author.name
+            self.playlist.append(song)
 
-    if not len(items):
-        await bot.send_message(msg_obj.channel, 'Unable to download playlist!')
-        return
+        if not self.song:
+            self.play()
 
-    for num, item in enumerate(items):
-        print('%s/%s' % (num, len(items)))
+        if len(self.playlist) > 1:
+            await self.on_queue(msg, msg_obj)
 
-        if num > 0 and not music['song']:
-            play(bot)
 
-        try:
-            x = await extract_info(bot, url=item, download=True)
-        except:
-            continue
+    async def on_pause(self, msg, msg_obj):
+        if not self.player:
+            return
 
-        music['playlist'].append(x)
+        self.paused = True
+        self.player.pause()
 
-    if not music['song']:
-        play(bot)
-    await on_queue(bot, msg, msg_obj)
+    async def on_resume(self, msg, msg_obj):
+        if self.paused:
+            self.paused = False
+            self.player.resume()
 
-async def on_pause(bot, msg, msg_obj):
-    if not bot.music['player']:
-        return
+    async def on_volume(self, msg, msg_obj):
+        if self.bot.permissions.get(msg_obj.author.id) not in ['user', 'mod', 'admin']:
+            return
 
-    bot.music['paused'] = True
-    bot.music['player'].pause()
+        if len(msg) == 1:
+            await bot.send_message(msg_obj, '`Current Volume: %s`' % self.volume)
+        else:
+            if not str.isdigit(msg[1]): return
+            self.volume = int(msg[1]) / 100
 
-async def on_resume(bot, msg, msg_obj):
-    if bot.music['paused']:
-        bot.music['paused'] = False
-        bot.music['player'].resume()
+            if self.player:
+                self.player = self.volume
+            await self.bot.send_message(msg_obj.channel, '`{} set the volume to {}`'.format(msg_obj.author, self.volume))
 
-async def on_volume(bot, msg, msg_obj):
-    global volume
-    
-    if bot.permissions.get(msg_obj.author.id) not in ['user', 'mod', 'admin']:
-        return
-    
-    if not str.isdigit(msg[1]) and int(msg[1]) < 60:
-        return
+    async def on_skip(self, msg, msg_obj):
+        self.skip.add(msg_obj.author)
 
-    volume = int(msg[1]) / 100
-    if bot.music['player']:
-        bot.music['player'].volume = volume
+        level = bot.permissions.get(msg_obj.author.id)
 
-    await bot.send_message(msg_obj.channel, '`{} set volume to: {}`'.format(msg_obj.author, volume))
+        if (self.player and level in ['mod', 'admin']) or skip.allowed:
+            self.player.stop()
+            self.player = None
 
-async def on_skip(bot, msg, msg_obj):
-    global skip
-    skip.add(msg_obj.author)
+        await self.bot.send_message(msg_obj.channel, '`{} Started a skip request! Need 1 more person to request a skip to continue!`'.format(msg_obj.author))
 
-    level = bot.permissions.get(msg_obj.author.id)
-
-    if (bot.music['player'] and level in ['mod', 'admin']) or skip.allowed: #TODO: Permissions.
-        bot.music['player'].stop()
-        bot.music['player'] = None
-        return
-
-    await bot.send_message(msg_obj.channel, '`{} Started a skip request! Need 1 more person to request a skip to continue!`'.format(msg_obj.author))
-
-async def on_queue(bot, msg, msg_obj):
-    music = bot.music
-    queue_str = ''
-    for song in music['playlist'][:20]:
-        queue_str += '%s: (%s).\n' % (song['title'], str(timedelta(seconds=song['duration'])))
-
-    p = str(timedelta(seconds=progress(bot)))
-    total_len = sum([x['duration'] for x in music['playlist']])
-
-    if music['song']:
-        await bot.send_message(msg_obj.channel, '**Current queue length: {} | Current Song Elapsed: {}/{} **| `Songs: {}\nQueue: {}`'.format(str(timedelta(seconds=total_len)), p, str(timedelta(seconds=music['song']['duration'])), len(music['playlist']), queue_str))
-
-async def on_summon(bot, msg, msg_obj):
-    level = bot.permissions.get(msg_obj.author.id)
-
-    if level is None or level not in ['user', 'mod', 'admin']:
-        return
-
-    if not bot.voice:
-        for member in bot.get_all_members():
-           if member == msg_obj.author and member.voice_channel is not None:
-                await bot.join_voice_channel(member.voice_channel)
-                return
-    else:
-        for bots in bot.get_all_members():
-            if bots == bot.user and bots.server == msg_obj.server:
-                for member in bot.get_all_members():
-                    if member == msg_obj.author and member.voice_channel is not None:
-                        print('Moving: %s to %s' % (bots, member.voice_channel))
-                        await bot.move_member(bots, member.voice_channel)
-                        print('Moving: %s to %s' % (bots, member.voice_channel))
-                        return
-
-async def on_move(bot, msg, msg_obj):
-    level = bot.permissions.get(msg_obj.author.id)
-
-    if level is None or level not in ['admin']:
-        return
-
-    for bots in bot.get_all_members():
-        if bots == bot.user and bots.server == msg_obj.server:
-            for channel in bot.get_all_channels():
-                if msg_obj.server.id  == channel.server.id and channel.name.lower() == msg[1].lower():
-                    print ('Moving bot to: %s/%s' % (channel, msg[1]))
-                    await bot.move_member(bots, channel)
-                    return
 
 async def on_message(bot, msg, msg_obj):
-    print('%s: %s' % (msg_obj.author.id, msg_obj.content))
-    return await do_callback(bot, msg, msg_obj)
+    if msg_obj.server not in bot.yt:
+        bot.yt[msg_obj.server] = YoutubePlayer(bot, msg_obj.channel)
+
+    return await bot.yt[msg_obj].process_commands(msg, msg_obj)
