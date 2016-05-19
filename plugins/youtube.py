@@ -118,7 +118,8 @@ class YoutubePlayer:
         callback_func = 'on_' + msg[0]
 
         if hasattr(self, callback_func):
-            return await getattr(self, callback_func)(msg, msg_obj)
+            await getattr(self, callback_func)(msg, msg_obj)
+            return True
         return False
 
     async def send_np(self, channel):
