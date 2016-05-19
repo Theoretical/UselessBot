@@ -252,7 +252,7 @@ class YoutubePlayer:
             return
 
         if len(msg) == 1:
-            await self.bot.send_message(msg_obj.channel.name, '`Current Volume: %s`' % self.volume)
+            await self.bot.send_message(msg_obj.channel, '`Current Volume: %s`' % self.volume)
         else:
             if not str.isdigit(msg[1]): return
             self.volume = int(msg[1]) / 100
