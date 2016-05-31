@@ -13,7 +13,6 @@ import youtube_dl
 import discord.utils
 from spotipy import Spotify
 from spotipy.util import prompt_for_user_token
-from json import dumps
 
 
 class Skip:
@@ -219,11 +218,19 @@ class YoutubePlayer:
 
 
     async def join_default_channel(self, member):
+        if self.voice:
+            return
+
+        old_voice = self.bot.is_voice_connected(member.server)
+        if old_voice:
+            self.voice = old_voice
+            return
+
         default_name = 'AFK'
         channel = discord.utils.find(lambda m: m.id == member.id and m.server.id == member.server.id and m.voice_channel is not None, member.server.members)
 
         if channel is not None:
-            self.voice = await self.bot.join_voice_channel(channel)
+            self.voice = await self.bot.join_voice_channel(channel.voice_channel)
             return
 
         channel = discord.utils.get(member.server.channels, name=default_name)
@@ -250,17 +257,14 @@ class YoutubePlayer:
                     break
         else:
             self.channel = msg_obj.channel
-        for num, song in enumerate(yt_songs):
-            print('%s/%s' % (num, total_songs))
-            if not self.song and num > 0:
-                self.play()
-            song = await self.extract_info(url=song, download=True)
-
-            if song is None:
-                continue
-            song['requestor'] = msg_obj.author.name
-            self.playlist.append(song)
         
+        playlist_task = gather(*(self.extract_info(url=item, download=True) for item in yt_songs))
+        playlist = await playlist_task
+        playlist = [x for x in playlist if x]
+        for s in playlist:
+            s['requestor'] = msg_obj.author.name
+
+        self.playlist.extend(playlist)
         if not self.song:
             self.play()
         await self.on_queue(msg, msg_obj)
@@ -318,28 +322,26 @@ class YoutubePlayer:
             return True
 
         playlist_url = open(playlist_name, 'rt').read().split('\n')[0]
+        t = time()
+
         items = await self.extract_info(url=playlist_url, process=False, download=False)
+        playlist_task = gather(*(self.process_info(item) for item in items['entries']))
+        playlist = await playlist_task
+        playlist = [x for x in playlist if x]
 
-        for num, item in enumerate(items['entries']):
-            if num > 0 and not self.song:
-                self.play()
+        end = time()
+        await self.bot.send_message(msg_obj.channel, '```Loaded: %s songs in %s seconds.```' % (len(playlist), end - t))
+        if msg[-1] == 'shuffle':
+            for i in range(0, 5):
+                shuffle(playlist)
+        for song in playlist:
+            song['requestor'] = msg_obj.author.name
 
-            try:
-                x = await self.process_info(item)
-                if x is None:
-                    continue
-
-                x['requestor'] = msg_obj.author.name
-                self.playlist.append(x)
-            except:
-                continue
+        self.playlist.extend(playlist)
         if not self.song:
             self.play()
 
-        if msg[-1] == 'shuffle':
-            return await self.on_shuffle(msg, msg_obj)
-        else:
-            return await self.on_queue(msg, msg_obj)
+        return await self.on_queue(msg, msg_obj)
 
 
     async def on_play(self, msg, msg_obj):
@@ -411,3 +413,4 @@ async def on_message(bot, msg, msg_obj):
         bot.yt[msg_obj.server] = YoutubePlayer(bot, msg_obj.channel)
 
     return await bot.yt[msg_obj.server].process_commands(msg, msg_obj)
+ 
