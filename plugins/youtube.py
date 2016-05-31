@@ -1,11 +1,20 @@
-from asyncio import Lock
+from aiohttp import get
+from asyncio import Lock, gather
 from datetime import timedelta
-from os import listdir, unlink
+from lxml.html import fromstring
+from os import listdir, unlink, environ
 from os.path import isfile
 from random import shuffle
+from time import time
+from urllib.parse import quote
 from concurrent.futures import ThreadPoolExecutor
 import functools
 import youtube_dl
+import discord.utils
+from spotipy import Spotify
+from spotipy.util import prompt_for_user_token
+from json import dumps
+
 
 class Skip:
     def __init__(self):
@@ -46,6 +55,75 @@ async def on_unload(bot):
         await yt.quit()
     bot.yt = dict()
 
+
+async def search_youtube(title):
+    print('https://www.googleapis.com/youtube/v3/search?part=id,snippet&q=%s&key=%s' % (quote(title), environ['YT_KEY']))
+    page = await get('https://www.googleapis.com/youtube/v3/search?part=id,snippet&q=%s&key=%s' % (quote(title), environ['YT_KEY']))
+    data = await page.json()
+
+    # We're going to try to isolate these to better videos..
+    videos = [x['id']['videoId'] for x in data['items'] if 'videoId' in x['id']]
+
+    page = await get('https://www.googleapis.com/youtube/v3/videos?part=id,snippet,contentDetails,status&id=%s&key=%s' % (','.join(videos), environ['YT_KEY']))
+    print('https://www.googleapis.com/youtube/v3/videos?part=id,snippet,contentDetails,status&id=%s&key=%s' % (','.join(videos), environ['YT_KEY']))
+    data = await page.json()
+    video_id = None
+
+    for item in data['items']:
+        details = item['contentDetails']
+        blocked = details.get('regionRestriction', {}).get('blocked', [])
+        allowed = details.get('regionRestriction', {}).get('allowed', [])
+        if 'CA' in blocked or (len(allowed) and 'CA' not in allowed) or details['definition'] != 'hd':
+            continue
+        video_id = item['id']
+
+    if video_id is None:
+        # default to vevo..
+        for item in data['items']:
+            if 'vevo' in item['snippet']['channelTitle'].lower():
+                video_id = item['id']
+                break
+
+    if video_id is None and len(videos):
+        # oh well...
+        video_id = videos[0]
+
+    if video_id:
+        return 'https://youtube.com/watch?v=%s' % video_id
+
+    return None
+
+async def get_spotify_playlist(url):
+    # Url can be a spotify url or uri.
+    user = ''
+    playlist_id = ''
+    songs = []
+
+    token = prompt_for_user_token('mdeception')
+
+    spotify = Spotify(auth=token)
+    if not 'http' in url:
+        user = url.split('user:')[1].split(':')[0]
+        playlist_id = url.split(':')[-1]
+    else:
+        user = url.split('user/')[1].split('/')[0]
+        playlist_id = url.split('/')[-1]
+
+    playlist = spotify.user_playlist(user, playlist_id, fields='tracks, next, name')
+
+    tracks = playlist['tracks']
+    for t in tracks['items']:
+        track = t['track']
+        songs.append('%s %s' % (track['name'], ' & '.join(x['name'] for x in track['artists'])))
+
+    while tracks['next']:
+        tracks = spotify.next(tracks)
+        for t in tracks['items']:
+            track = t['track']
+            songs.append('%s %s' % (track['name'], ' & '.join(x['name'] for x in track['artists'])))
+
+    return (playlist['name'], user, songs)
+
 class YoutubePlayer:
     def __init__(self, bot, channel):
         self.playlist = list()
@@ -60,6 +138,10 @@ class YoutubePlayer:
         self.voice = None
         self.channel = channel
         self.volume = .05
+
+    def search_youtube(self, title):
+        thread_pool = ThreadPoolExecutor(max_workers=4)
+        return self.bot.loop.run_in_executor(thread_pool, search_youtube, title)
 
     def extract_info(self, *args, **kwargs):
         thread_pool = ThreadPoolExecutor(max_workers=2)
@@ -94,6 +176,12 @@ class YoutubePlayer:
                 self.paused = False
                 self.player.resume()
 
+
+        if not self.bot.is_voice_connected(self.channel.server):
+            # default to AFK channel..
+            channel = discord.utils.get(self.channel.server.channels, name='AFK')
+            self.voice = await self.bot.join_voice_channel(channel)
+
         with await self.music_lock:
             try:
                 self.song = self.playlist.pop(0)
@@ -126,9 +214,58 @@ class YoutubePlayer:
         if self.song:
             song = self.song
             position = str(timedelta(seconds=self.progress))
-            length = str(timedelta(seconds=song['duration']))
+            length = str(timedelta(seconds=song.get('duration', 0)))
             await self.bot.send_message(channel, '```Now Playing: {0} requested by {1} | Timestamp: {2} | Length: {3}\n{4}```'.format(song['title'], song['requestor'], position, length, song['webpage_url']))
 
+
+    async def join_default_channel(self, member):
+        default_name = 'AFK'
+        channel = discord.utils.find(lambda m: m.id == member.id and m.server.id == member.server.id and m.voice_channel is not None, member.server.members)
+
+        if channel is not None:
+            self.voice = await self.bot.join_voice_channel(channel)
+            return
+
+        channel = discord.utils.get(member.server.channels, name=default_name)
+        self.voice = await self.bot.join_voice_channel(channel)
+
+
+    async def on_spotify(self, msg, msg_obj):
+        t = time()
+        playlist, user, songs = await get_spotify_playlist(msg[1])
+        yt_search = gather(*(search_youtube(song) for song in songs))
+        yt_songs = await yt_search
+        yt_songs = [song for song in yt_songs if song is not None]
+
+        ended = time()
+        total_songs = len(songs)
+        await self.bot.send_message(msg_obj.channel, '`Found: %s songs in playlist: %s by %s in %s seconds.!`' % (total_songs, playlist, user, ended - t))
+        await self.join_default_channel(msg_obj.author)
+
+        # Find a bot channel if we have one...
+        if msg_obj.channel.name != 'bot':
+            for ch in msg_obj.server.channels:
+                if ch.name == 'bot':
+                    self.channel = ch
+                    break
+        else:
+            self.channel = msg_obj.channel
+        for num, song in enumerate(yt_songs):
+            print('%s/%s' % (num, total_songs))
+            if not self.song and num > 0:
+                self.play()
+            song = await self.extract_info(url=song, download=True)
+
+            if song is None:
+                continue
+            song['requestor'] = msg_obj.author.name
+            self.playlist.append(song)
+        
+        if not self.song:
+            self.play()
+        await self.on_queue(msg, msg_obj)
+        return True
+    
     async def on_np(self, msg, msg_obj):
         await self.send_np(msg_obj.channel)
         return True
@@ -148,18 +285,15 @@ class YoutubePlayer:
             queue_str += '%s: (%ss). requested by: %s\n' % (song['title'], str(timedelta(seconds=song['duration'])), song['requestor'])
 
         position = str(timedelta(seconds=self.progress))
-        length = str(timedelta(seconds=self.song['duration']))
-        total_len = sum([x['duration'] for x in self.playlist])
+        length = str(timedelta(seconds=self.song.get('duration', 0)))
+        total_len = sum([x.get('duration', 0) for x in self.playlist])
         await self.bot.send_message(msg_obj.channel, '```Queue length: {} | Queue Size: {} | Current Song Progress: {}/{}\n{}```'.format(str(timedelta(seconds=total_len)), len(self.playlist), position, length, queue_str))
 
 
     async def on_playlist(self, msg, msg_obj):
         playlist_name = 'playlists/%s.txt' % msg[1]
 
-        if self.voice is None:
-            for member in self.bot.get_all_members():
-                if member == msg_obj.author and member.voice_channel is not None:
-                    self.voice = await self.bot.join_voice_channel(member.voice_channel)
+        await self.join_default_channel(msg_obj.author)
 
         # Find a bot channel if we have one...
         if msg_obj.channel.name != 'bot':
@@ -209,10 +343,7 @@ class YoutubePlayer:
 
 
     async def on_play(self, msg, msg_obj):
-        if self.voice is None:
-            for member in self.bot.get_all_members():
-                if member == msg_obj.author and member.voice_channel is not None:
-                    self.voice = await self.bot.join_voice_channel(member.voice_channel)
+        await self.join_default_channel(msg_obj.author)
 
         # Find a bot channel if we have one...
         if msg_obj.channel.name != 'bot':
@@ -259,6 +390,7 @@ class YoutubePlayer:
 
             if self.player:
                 self.player.volume = self.volume
+
             await self.bot.send_message(msg_obj.channel, '`{} set the volume to {}`'.format(msg_obj.author, self.volume))
 
     async def on_skip(self, msg, msg_obj):

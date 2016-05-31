@@ -2,15 +2,30 @@ from discord import Colour
 from random import choice, seed
 from time import sleep
 from datetime import datetime
+import discord.utils
 
 stop = False
 def on_load(bot):
     pass
 
+def a2s(bot, func):
+    bot.loop.create_task(func)
+
 async def on_message(bot, msg, msg_obj):
     global gays
 
 
+    if msg[0] == 'eval':
+        if bot.permissions.get(msg_obj.author.id) != 'admin':
+            return
+
+        try:
+            await bot.send_message(msg_obj.channel, '```{}```'.format(eval(' '.join(msg[1:]), globals(), locals())))
+        except Exception as e:
+            print('wtf')
+            print(e)
+            await bot.send_message(msg_obj.channel, '```{}```'.format(e))
+        return True
     if msg[0] == 'mute':
         level = bot.permissions.get(msg_obj.author.id)
 
