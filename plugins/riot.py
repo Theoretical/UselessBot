@@ -44,9 +44,9 @@ async def on_message(bot, msg, msg_obj):
 
         for summoner in master:
             if master.name.lower() == ' '.join(msg[1:]).lower():
-                await bot.send_message(msg_obj.channel, '**YOU THINK THAT NIGGA IS A JOKE?**')
+                await bot.send_message(msg_obj.channel, '**YOU THINK THAT PLAYER IS A JOKE?**')
 
-        await bot.send_message(msg_obj.channel, 'No, that nigga is basically johnny...')
+        await bot.send_message(msg_obj.channel, 'No, that player is basically johnny...')
         return True
 
     if msg[0] == 'mmr':
