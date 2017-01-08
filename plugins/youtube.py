@@ -135,6 +135,7 @@ class YoutubePlayer:
         self.stopped = False
         self.paused = False
         self.voice = None
+        self.voice_channel = None
         self.channel = channel
         self.volume = .05
 
@@ -178,9 +179,10 @@ class YoutubePlayer:
 
         if not self.bot.is_voice_connected(self.channel.server):
             # default to AFK channel..
-            channel = discord.utils.get(self.channel.server.channels, name='AFK')
+            channel = discord.utils.get(self.channel.server.channels, name='Praying With Zulia')
             self.voice = await self.bot.join_voice_channel(self.voice_channel or channel)
-            self.voice_channel = channel.voice_channel
+            if not self.voice_channel:
+                 self.voice_channel = channel.voice_channel
 
         with await self.music_lock:
             try:
@@ -222,10 +224,6 @@ class YoutubePlayer:
         if self.voice:
             return
 
-        old_voice = self.bot.is_voice_connected(member.server)
-        if old_voice:
-            self.voice = old_voice
-            return
 
         default_name = 'AFK'
         channel = discord.utils.find(lambda m: m.id == member.id and m.server.id == member.server.id and m.voice_channel is not None, member.server.members)
@@ -315,10 +313,13 @@ class YoutubePlayer:
             self.playlist.append(song)
 
         else:
+            t = time()
             items = await self.extract_info(url=msg[1], process=False, download=False)
             playlist_task = gather(*(self.process_info(item) for item in items['entries']))
             playlist = await playlist_task
             playlist = [x for x in playlist if x]
+             
+            end = time()
             await self.bot.send_message(msg_obj.channel, '```Loaded: %s songs in %s seconds.```' % (len(playlist), end - t))
             if msg[-1] == 'shuffle':
                 for i in range(0, 5):
@@ -374,16 +375,19 @@ class YoutubePlayer:
         await self.bot.send_message(msg_obj.channel, '`{} Started a skip request! Need 1 more person to request a skip to continue!`'.format(msg_obj.author))
 
     async def on_summon(self, msg, msg_obj):
+        if self.voice:
+            await self.voice.disconnect()
         if len(msg) > 1:
             member = discord.utils.find(lambda m: m.mention == msg[1], msg_obj.server.members)
         else:
             member  = msg_obj.author
 
         channel = discord.utils.find(lambda m: m.id == member.id and m.server.id == member.server.id and m.voice_channel is not None, member.server.members)
-        self.voice = await self.bot.join_voice_channel(self.voice_channel or channel)
+        print('%s | %s\n' % (member, channel))
+        self.voice = await self.bot.join_voice_channel(channel.voice_channel)
         self.voice_channel = channel.voice_channel
 
-        await self.bot.send_message(msg_obj.channel, '`Joining channel with {}`'.format(member.mention))
+        await self.bot.send_message(msg_obj.channel, '`Joining channel with {}`'.format(member))
 
 
 async def on_message(bot, msg, msg_obj):
