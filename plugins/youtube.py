@@ -180,6 +180,7 @@ class YoutubePlayer:
             # default to AFK channel..
             channel = discord.utils.get(self.channel.server.channels, name='AFK')
             self.voice = await self.bot.join_voice_channel(self.voice_channel or channel)
+            self.voice_channel = channel.voice_channel
 
         with await self.music_lock:
             try:
@@ -259,7 +260,7 @@ class YoutubePlayer:
                     break
         else:
             self.channel = msg_obj.channel
-        
+
         playlist_task = gather(*(self.extract_info(url=item, download=True) for item in yt_songs))
         playlist = await playlist_task
         playlist = [x for x in playlist if x]
@@ -271,7 +272,7 @@ class YoutubePlayer:
             self.play()
         await self.on_queue(msg, msg_obj)
         return True
-    
+
     async def on_np(self, msg, msg_obj):
         await self.send_np(msg_obj.channel)
         return True
@@ -296,56 +297,6 @@ class YoutubePlayer:
         await self.bot.send_message(msg_obj.channel, '```Queue length: {} | Queue Size: {} | Current Song Progress: {}/{}\n{}```'.format(str(timedelta(seconds=total_len)), len(self.playlist), position, length, queue_str))
 
 
-    async def on_playlist(self, msg, msg_obj):
-        playlist_name = 'playlists/%s.txt' % msg[1]
-
-        await self.join_default_channel(msg_obj.author)
-
-        # Find a bot channel if we have one...
-        if msg_obj.channel.name != 'bot':
-            for ch in msg_obj.server.channels:
-                if ch.name == 'bot':
-                    self.channel = ch
-                    break
-        else:
-            self.channel = msg_obj.channel
-        if msg[1] == 'list':
-            playlists = [x.split('.')[0] for x in listdir('playlists/')]
-            await self.bot.send_message(msg_obj.channel, 'Available playlists: `{}`'.format('|'.join(playlists)))
-            return True
-
-        if len(msg) > 2 and 'youtube.com' in msg[2]:
-            f = open(playlist_name, 'wt')
-            f.write('%s\n' % msg[2])
-            f.close()
-
-        if not isfile(playlist_name):
-            await self.bot.send_message(msg_obj.channel, 'Invalid playlist!')
-            return True
-
-        playlist_url = open(playlist_name, 'rt').read().split('\n')[0]
-        t = time()
-
-        items = await self.extract_info(url=playlist_url, process=False, download=False)
-        playlist_task = gather(*(self.process_info(item) for item in items['entries']))
-        playlist = await playlist_task
-        playlist = [x for x in playlist if x]
-
-        end = time()
-        await self.bot.send_message(msg_obj.channel, '```Loaded: %s songs in %s seconds.```' % (len(playlist), end - t))
-        if msg[-1] == 'shuffle':
-            for i in range(0, 5):
-                shuffle(playlist)
-        for song in playlist:
-            song['requestor'] = msg_obj.author.name
-
-        self.playlist.extend(playlist)
-        if not self.song:
-            self.play()
-
-        return await self.on_queue(msg, msg_obj)
-
-
     async def on_play(self, msg, msg_obj):
         await self.join_default_channel(msg_obj.author)
 
@@ -363,12 +314,25 @@ class YoutubePlayer:
             song['requestor'] = msg_obj.author.name
             self.playlist.append(song)
 
+        else:
+            items = await self.extract_info(url=msg[1], process=False, download=False)
+            playlist_task = gather(*(self.process_info(item) for item in items['entries']))
+            playlist = await playlist_task
+            playlist = [x for x in playlist if x]
+            await self.bot.send_message(msg_obj.channel, '```Loaded: %s songs in %s seconds.```' % (len(playlist), end - t))
+            if msg[-1] == 'shuffle':
+                for i in range(0, 5):
+                    shuffle(playlist)
+            for song in playlist:
+                song['requestor'] = msg_obj.author.name
+
+            self.playlist.extend(playlist)
+
         if not self.song:
             self.play()
 
         if len(self.playlist) > 1:
             await self.on_queue(msg, msg_obj)
-
 
     async def on_pause(self, msg, msg_obj):
         if not self.player:
@@ -409,10 +373,21 @@ class YoutubePlayer:
 
         await self.bot.send_message(msg_obj.channel, '`{} Started a skip request! Need 1 more person to request a skip to continue!`'.format(msg_obj.author))
 
+    async def on_summon(self, msg, msg_obj):
+        if len(msg) > 1:
+            member = discord.utils.find(lambda m: m.mention == msg[1], msg_obj.server.members)
+        else:
+            member  = msg_obj.author
+
+        channel = discord.utils.find(lambda m: m.id == member.id and m.server.id == member.server.id and m.voice_channel is not None, member.server.members)
+        self.voice = await self.bot.join_voice_channel(self.voice_channel or channel)
+        self.voice_channel = channel.voice_channel
+
+        await self.bot.send_message(msg_obj.channel, '`Joining channel with {}`'.format(member.mention))
+
 
 async def on_message(bot, msg, msg_obj):
     if msg_obj.server not in bot.yt:
         bot.yt[msg_obj.server] = YoutubePlayer(bot, msg_obj.channel)
 
     return await bot.yt[msg_obj.server].process_commands(msg, msg_obj)
- 

@@ -24,7 +24,6 @@ async def on_message(bot, msg, msg_obj):
         if msg[1] == 'add' and level == 'admin':
             status = msg[2]
             user = msg[3]
-            print('%s | %s' % (status, user))
             user_obj = discord.utils.find(lambda m: m.mention == msg[3], msg_obj.server.members)
 
             bot.permissions[user_obj.id] = status
