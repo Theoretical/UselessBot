@@ -98,7 +98,7 @@ async def get_spotify_playlist(url):
     playlist_id = ''
     songs = []
 
-    token = prompt_for_user_token('mdeception')
+    token = prompt_for_user_token('mdeception', 'user-library-read')
 
     spotify = Spotify(auth=token)
     if not 'http' in url:
@@ -179,7 +179,7 @@ class YoutubePlayer:
         if not self.bot.is_voice_connected(self.channel.server):
             # default to AFK channel..
             channel = discord.utils.get(self.channel.server.channels, name='AFK')
-            self.voice = await self.bot.join_voice_channel(channel)
+            self.voice = await self.bot.join_voice_channel(self.voice_channel or channel)
 
         with await self.music_lock:
             try:
@@ -187,7 +187,7 @@ class YoutubePlayer:
             except:
                 return
 
-            self.player = self.voice.create_ffmpeg_player('/tmp/' + self.song['id'])
+            self.player = self.voice.create_ffmpeg_player('/tmp/' + self.song['id'], use_avconv=True)
             self.player.loops = 0 #???
             self.player.after = lambda: self.bot.loop.call_soon_threadsafe(self.on_finished)
             await self.send_np(self.channel)
@@ -231,10 +231,12 @@ class YoutubePlayer:
 
         if channel is not None:
             self.voice = await self.bot.join_voice_channel(channel.voice_channel)
+            self.voice_channel = channel.voice_channel
             return
 
         channel = discord.utils.get(member.server.channels, name=default_name)
         self.voice = await self.bot.join_voice_channel(channel)
+        self.voice_channel = channel
 
 
     async def on_spotify(self, msg, msg_obj):
@@ -400,7 +402,7 @@ class YoutubePlayer:
 
         level = self.bot.permissions.get(msg_obj.author.id)
 
-        if (self.player and level in ['mod', 'admin']) or skip.allowed:
+        if (self.player and level in ['mod', 'admin']) or self.skip.allowed:
             self.player.stop()
             self.player = None
             return True

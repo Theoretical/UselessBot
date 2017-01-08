@@ -12,7 +12,6 @@ def a2s(bot, func):
     bot.loop.create_task(func)
 
 async def on_message(bot, msg, msg_obj):
-    global gays
 
 
     if msg[0] == 'eval':
@@ -66,7 +65,7 @@ async def on_message(bot, msg, msg_obj):
             sleep(.75)
 
         return True
-    if msg[0] == 'spicU73H4ITGHUI43GHJK:We':
+    if msg[0] == 'rgb':
         level = bot.permissions.get(msg_obj.author.id)
 
         if level is None or level not in ['mod', 'admin']:
@@ -75,7 +74,9 @@ async def on_message(bot, msg, msg_obj):
         out_msg = '`{}`'
         tmp_msg = ''
         for role in msg_obj.server.roles:
-            for i in range(0, 5):
+            if role.name.lower() != msg[1:]: continue
+            for i in range(0, 50):
+                print(role.name)
                 seed(datetime.now())
                 color = Colour(int(''.join([choice('0123456789ABCDEF') for x in range(6)]), 16))
                 await bot.edit_role(msg_obj.server, role, color=color)

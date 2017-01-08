@@ -68,5 +68,6 @@ client = Bot('.', '')
 async def on_ready():
     print("Bot is running as the user '{user}'".format(user=client.user.name))
 
+print(environ.get('DISCORD_TOKEN'))
 client.run(environ.get("DISCORD_TOKEN"))
 print("Running")

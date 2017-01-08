@@ -1,3 +1,4 @@
+import discord.utils
 def on_load(bot):
     bot.permissions = {}
     for line in open('permissions.txt', 'rt').read().split('\n')[:-1]:
@@ -22,12 +23,11 @@ async def on_message(bot, msg, msg_obj):
             return True
         if msg[1] == 'add' and level == 'admin':
             status = msg[2]
-            user = ' '.join(msg[3:])
+            user = msg[3]
+            print('%s | %s' % (status, user))
+            user_obj = discord.utils.find(lambda m: m.mention == msg[3], msg_obj.server.members)
 
-            for u in bot.get_all_members():
-                if user.lower() == u.name.lower():
-                    bot.permissions[u.id] = status
-                    break
+            bot.permissions[user_obj.id] = status
             f = open('permissions.txt', 'wt')
             for k,v in bot.permissions.items():
                 f.write('%s:%s\n' % (k, v))
